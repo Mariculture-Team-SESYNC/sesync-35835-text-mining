@@ -27,3 +27,16 @@ fulltexts <- lapply(mytxtfiles, function(i) {
 # write full txts as txt files 
 lapply(1:length(fulltexts), 
        function(i) write.table(fulltexts[i], file=paste(mytxtfiles[i], "fulltexts", "txt", sep="."), quote = FALSE, row.names = FALSE, col.names = FALSE, eol = " " ))
+
+# Extract Location
+# Assumes that location is between country of publication
+# and publication subject
+locationtexts <- lapply(mytxtfiles, function(i) {
+  j <- paste0(scan(i, what = character()), collapse = " ")
+  regmatches(j, gregexpr("(?<=Country of publication: ).*?(?=Publication subject:)", j, perl=TRUE))
+})
+
+# write location txts as txt files 
+lapply(1:length(locationtexts), 
+       function(i) write.table(locationtexts[i], file=paste(mytxtfiles[i], "locationtexts", "txt", sep="."), quote = FALSE, row.names = FALSE, col.names = FALSE, eol = " " ))
+
