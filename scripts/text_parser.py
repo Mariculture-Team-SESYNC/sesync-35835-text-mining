@@ -1,7 +1,8 @@
 import re
 import pandas as pd 
 
-PATH = '/research-home/agarcia/textmining_35835/data/'
+# path to where the txt files are
+PATH = '/nfs/mariculture-data/Text_Parser/data/' 
 
 # Define columns (sections in the articles)
 COLS = ['Title', 'Publication info', 'Abstract', 'Links', 'Full text',
@@ -50,10 +51,12 @@ def split_article(article, cols):
             lst.append(f'{c} does not exit in article!')
     return lst
 
-
-def main():
+# Main function to parse a text file
+# Params: path to read/write files, name of the txt file, output file name
+# Note: the output file will be a csv
+def main(path, input, output):
     # read txt file
-    data = read_file(PATH, 'ProQuestDocuments.txt')
+    data = read_file(path, f'/{input}')
     
     # Get articles
     articles = get_articles(data)
@@ -66,7 +69,9 @@ def main():
     # and each columns represents a sectoin in the article
     df = pd.DataFrame(main, columns=COLS)
 
-    df.to_csv(PATH + "parsed_txt.csv")
+    df.to_csv(path + f"{output}.csv")
 
 if __name__ == "__main__":
-    main()
+    # Main function takes in a path to read/write,
+    # a name of a txt file to read, and a string name for the output csv file
+    main(PATH, "ProQuestDocuments.txt", "ProQuestDocuments_parsed")
