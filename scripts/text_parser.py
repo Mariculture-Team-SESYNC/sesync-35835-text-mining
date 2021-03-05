@@ -6,7 +6,7 @@ PATH = '/nfs/mariculture-data/Text_Parser/data/'
 
 # Define columns (sections in the articles)
 COLS = ['Title', 'Publication info', 'Abstract', 'Links', 'Full text',
-       'Subject', 'Location', 'Company / organization:',
+       'Subject', 'Location', 'Company / organization',
        'Publication title', 'Publication year', 'Publication date',
        'Publisher', 'Place of publication', 'Country of publication',
        'Publication subject', 'Source type', 'Language of publication', 
@@ -15,7 +15,7 @@ COLS = ['Title', 'Publication info', 'Abstract', 'Links', 'Full text',
 
 # Read text file
 def read_file(path, name):
-    with open(path + name, 'r') as file:
+    with open(path + '/'+ name, 'r') as file:
         data = file.read().replace('\n', ' ')
         return data
 
@@ -34,7 +34,7 @@ def get_articles(string):
 
 # Using regex get a specified section in an article
 def get_section(start, end, article):
-    result = re.search(f'{start}: \s*(.*?)\s*{end}', article)
+    result = re.search(start + ': \s*(.*?)\s*' + end, article)
     return result.group(1)
 
 
@@ -48,7 +48,7 @@ def split_article(article, cols):
             sec = get_section(c, '  ', article)
             lst.append(sec)
         except:
-            lst.append(f'{c} does not exit in article!')
+            lst.append('Does not exit in article.')
     return lst
 
 # Main function to parse a text file
@@ -56,7 +56,7 @@ def split_article(article, cols):
 # Note: the output file will be a csv
 def main(path, input, output):
     # read txt file
-    data = read_file(path, f'/{input}')
+    data = read_file(path, input)
     
     # Get articles
     articles = get_articles(data)
@@ -69,7 +69,7 @@ def main(path, input, output):
     # and each columns represents a sectoin in the article
     df = pd.DataFrame(main, columns=COLS)
 
-    df.to_csv(path + f"{output}.csv")
+    df.to_csv(path + '/' + output + ".csv")
 
 if __name__ == "__main__":
     # Main function takes in a path to read/write,
