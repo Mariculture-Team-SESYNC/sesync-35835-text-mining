@@ -1,0 +1,192 @@
+---
+title: "Cleaning ProQuest data and simple LDA topic model example"
+author: "Quentin D. Read"
+date: "3/3/2021"
+output: html_document
+---
+
+**This is a work in progress and will be edited! The data cleaning part is in good shape but the modeling example is a "quick and dirty" solution that has flaws and could be improved.**
+
+# Summary
+
+This is a notebook which goes through the process of cleaning the data from ProQuest, putting it in a format that can be analyzed, and fitting a very basic LDA model.
+
+This borrows heavily from [Julia Silge's tidy textmining lesson on topic models linked here](https://juliasilge.github.io/tidytext/articles/topic_modeling.html) as well as [SESYNC's lesson on textmining linked here](https://cyberhelp.sesync.org/text-mining-lesson). 
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+# Setup
+
+Load packages (including all packages needed for the topic modeling).
+
+```{r load, message = FALSE, warning = FALSE}
+library(tidyverse)
+library(tidytext)
+library(tm)
+library(topicmodels)
+```
+
+# Parse raw output from ProQuest
+
+Next, Andres wrote an awesome Python function to parse the raw output from ProQuest, including the full text and all the other fields (publisher, date, location, etc.). Luckily you can run Python code from within R, including from within R notebooks like this one, thanks to the `reticulate` package which is running behind the scenes here. This next bit of code is Python, which imports the Python module Andres wrote, and then parses the text document from ProQuest and save as a CSV in the same directory (which is inside your team's research data directory).
+
+**Note** that the `text_parser.py` script we are importing has to be in the same directory as this notebook. If you are interested in the Python code, take a look at that script on the GitHub repo.
+
+```{python}
+import text_parser
+text_parser.main(path = '/nfs/mariculture-data/Text_Parser/data/',
+                 input = 'ProQuestDocuments.txt',
+                 output = 'ProQuestDocuments_parsed')
+```
+
+Now we can load the resulting CSV into R.
+
+```{r, message = FALSE}
+articles <- read_csv('/nfs/mariculture-data/Text_Parser/data/ProQuestDocuments_parsed.csv')
+```
+
+# Put data into analyzable form
+
+You can see that there is a lot of rich metadata about each article in ProQuest, along with the full text of each article:
+
+```{r}
+head(articles)
+```
+
+For the purposes of this example, we will just ignore any of that metadata. We'll just work with the numeric ID of each article and the full text. Select only those columns and rename them to get rid of spaces in the column names.
+
+```{r}
+articles <- articles %>%
+  select(`ProQuest document ID`, `Full text`) %>%
+  setNames(c('document_ID', 'full_text'))
+```
+
+We are going to fit a very simple LDA topic model that does not account for any structure above the level of individual words. Later we can work on phrases. Again this is basically taken from Julia Silge's tutorial linked above.
+
+Next separate the character string of each article's full text into individual words.
+
+```{r}
+articles_word <- articles %>%
+  unnest_tokens(word, full_text)
+```
+
+Use the built-in lexicon of stop words to remove grammatical words that don't contribute to meaning, and make a table of the number of times the remaining words appear in each article.
+
+```{r}
+articles_wordcount <- articles_word %>%
+  group_by(document_ID) %>%
+  anti_join(stop_words) %>%
+  count(word, sort = TRUE)
+```
+
+Here's some more manual cleaning. First remove the word "aquaculture," as it appears in every article by necessity and therefore won't be useful for differentiating topics. I also noticed a few common junk words that I removed manually. Later you could add to that list.
+
+```{r}
+words_to_remove <- c('aquaculture', 'â', 'https', 'doi.org')
+
+articles_wordcount <- articles_wordcount %>% filter(!word %in% words_to_remove)
+```
+
+In addition, remove any "words" that are actually numbers (such as years) which appear often in the articles. To do this, remove any row that is not `NA` when we convert the character strings to numeric.
+
+```{r, warning = FALSE}
+articles_wordcount <- articles_wordcount %>% filter(is.na(as.numeric(word)))
+```
+
+Finally, convert the long data frame, which has one row for each article-word combination, to a document-term matrix (DTM). The DTM is in wide form, where each row is an article and each column is a word, with the entries being how many times the word appears in the article. It is a relatively "sparse" matrix, meaning that there are a lot of zeroes in it, around 94% of the entries (because the majority of words only appear in one or two articles).
+
+```{r}
+articles_dtm <- articles_wordcount %>%
+  cast_dtm(document = document_ID, term = word, value = n)
+
+articles_dtm
+```
+
+# Fit the LDA model
+
+The LDA model requires that we specify a number of topics a priori. I used `k = 4` for now but different numbers may be used. (Note we also set a seed because it's a stochastic algorithm so we need to ensure we get the same result each time for reproducibility.) Then use the `tidy()` function to extract output from the model. The result is a bunch of coefficients called `beta` for each word for each topic, showing how strongly that word is related to that topic.
+
+```{r, message = FALSE}
+articles_lda4 <- LDA(articles_dtm, k = 4, control = list(seed = 410))
+
+articles_lda4_output <- tidy(articles_lda4)
+```
+
+# Look at output from the model
+
+Find the top 10 terms, with the highest beta values, for each topic.
+
+```{r}
+top10 <- articles_lda4_output %>%
+  group_by(topic) %>%
+  top_n(10, beta) %>%
+  ungroup %>%
+  arrange(topic, -beta)
+
+print(top10, n = 40)
+```
+
+Create a plot to visualize the results.
+
+```{r}
+theme_set(theme_bw())
+
+top10 %>%
+  mutate(term = reorder_within(term, beta, topic)) %>%
+  ggplot(aes(term, beta)) +
+  geom_bar(stat = "identity") +
+  scale_x_reordered() +
+  scale_y_continuous(expand = expansion(mult = c(0, 0.03))) +
+  facet_wrap(~ topic, scales = "free_x") +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1))
+```
+
+In this toy example, it looks like there is a topic about how aquaculture marine fisheries in the Gulf of Mexico, a topic featuring environmental impacts of offshore farms, a topic about regulation (committee) and research (NOAA/research/data) into aquaculture, and a topic about fish farming that features interactions between fish and double-crested cormorant.
+
+# Associating the articles back to topics
+
+Now that we have our (arbitrarily chosen 4) topics at the word level, we can go back and assign the articles to those topics. We might not be able to cleanly assign each article to a single topic because articles could contain words from multiple topics. So we will get a score for each article for each topic and we can tentatively assign the article to the topic it scores highest for.
+
+The following returns the coefficient `gamma` for each topic for each document. This is essentially a score that shows how highly each document was associated with each topic.
+
+```{r}
+articles_lda_gamma <- tidy(articles_lda4, matrix = "gamma")
+articles_lda_gamma
+```
+
+Let's look at how confidently each article was assigned to a topic. For each article, find the topic with the highest gamma and show what it was. A gamma approaching 1 means approaching 100% confidence. The histograms show that the majority of articles were assigned almost completely to one of the four topics, but a significant number were divided between two topics.
+
+```{r}
+articles_lda_gamma %>% 
+  group_by(document) %>%
+  filter(gamma == max(gamma)) %>%
+  ggplot(aes(x = gamma)) +
+    facet_wrap(~ topic) +
+    geom_histogram()
+```
+
+Here is an alternative way to plot this result. First sort the gamma data frame by the top topic for each document to neaten the plot, then plot a stacked bar showing the proportion of gamma for each topic for each document.
+
+```{r}
+# Find order of documents for plotting
+sorted_doc_order <- articles_lda_gamma %>%
+  group_by(document) %>%
+  mutate(consensus_topic = topic[gamma == max(gamma)], consensus_gamma = max(gamma)) %>%
+  arrange(consensus_topic, -consensus_gamma) %>%
+  pull(document) %>%
+  unique
+
+# Make plot
+articles_lda_gamma %>% 
+  mutate(document = factor(as.character(document), levels = sorted_doc_order)) %>%
+ggplot(aes(x = document, y = gamma, fill = factor(topic))) +
+  geom_bar(position = 'stack', stat = 'identity') +
+  theme_bw() +
+  theme(axis.text.x = element_text(angle = 90, vjust = 0.5)) +
+  scale_y_continuous(expand = c(0, 0)) +
+  scale_fill_brewer(palette = "Dark2")
+```
+
+You could use this result to look at the articles that are supposed to be part of the same topic.
