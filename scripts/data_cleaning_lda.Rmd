@@ -1,11 +1,16 @@
 ---
 title: "Cleaning ProQuest data and simple LDA topic model example"
 author: "Quentin D. Read"
-date: "3/3/2021"
+date: "3/8/2021"
 output: html_document
 ---
 
 **This is a work in progress and will be edited! The data cleaning part is in good shape but the modeling example is a "quick and dirty" solution that has flaws and could be improved.**
+
+# Version History
+
+- **3 March 2021**: first version
+- **8 March 2021**: add information on how to tokenize into phrases of length `n` instead of words, thresholding out very common and very rare words, and using topic coherence score to help determine the optimal number of topics `k`.
 
 # Summary
 
@@ -26,6 +31,7 @@ library(tidyverse)
 library(tidytext)
 library(tm)
 library(topicmodels)
+library(topicdoc)
 ```
 
 # Parse raw output from ProQuest
@@ -65,14 +71,16 @@ articles <- articles %>%
 
 We are going to fit a very simple LDA topic model that does not account for any structure above the level of individual words. Later we can work on phrases. Again this is basically taken from Julia Silge's tutorial linked above.
 
-Next separate the character string of each article's full text into individual words.
+Next separate the character string of each article's full text into individual words. 
 
 ```{r}
 articles_word <- articles %>%
   unnest_tokens(word, full_text)
 ```
 
-Use the built-in lexicon of stop words to remove grammatical words that don't contribute to meaning, and make a table of the number of times the remaining words appear in each article.
+**Note**: the `unnest_tokens()` function is powerful. By default, it tokenizes down to the length of one word. However, you can tokenize in a number of different ways. If you are interested in phrases of length *n*, or so-called *n-grams*, you can tokenize, as in this example using phrases of length 2: `articles %>% unnest_tokens(ngram, full_text, token = 'ngrams', n = 2)`. Read the documentation at `?unnest_tokens` for more info. I didn't implement any of this in this example notebook, but I did want to call it to your attention in case you are interested in exploring that.
+
+Back to data cleaning: next we use the built-in lexicon of stop words to remove grammatical words that don't contribute to meaning, and make a table of the number of times the remaining words appear in each article.
 
 ```{r}
 articles_wordcount <- articles_word %>%
@@ -81,12 +89,27 @@ articles_wordcount <- articles_word %>%
   count(word, sort = TRUE)
 ```
 
-Here's some more manual cleaning. First remove the word "aquaculture," as it appears in every article by necessity and therefore won't be useful for differentiating topics. I also noticed a few common junk words that I removed manually. Later you could add to that list.
+Here's some more manual cleaning. First, words appearing in only one article will not help in grouping articles by topic, but they can add to computation time. So let's remove those. Also, let's remove any words that appear in over half the articles. Again, those won't help that much because they will appear in almost every topic. That will get rid of words like "aquaculture," "fish," and "water." First remove the word "aquaculture," as it appears in every article by necessity and therefore won't be useful for differentiating topics. I also noticed a few common junk words that I removed manually. Later you could add to that list. **Note**: you could experiment with the low and high thresholds.
 
 ```{r}
-words_to_remove <- c('aquaculture', 'â', 'https', 'doi.org')
+n_articles_by_word <- articles_wordcount %>%
+  group_by(word) %>%
+  summarize(n_articles = length(unique(document_ID)))
 
-articles_wordcount <- articles_wordcount %>% filter(!word %in% words_to_remove)
+singleton_words <- n_articles_by_word %>% 
+  filter(n_articles == 1) %>% 
+  pull(word)
+
+too_common_words <- n_articles_by_word %>% 
+  filter(n_articles > length(unique(articles$document_ID))/2) %>%
+  pull(word)
+
+junk_words <- c('â', 'https', 'doi.org')
+
+too_common_words
+
+articles_wordcount <- articles_wordcount %>% 
+  filter(!word %in% c(singleton_words, too_common_words, junk_words))
 ```
 
 In addition, remove any "words" that are actually numbers (such as years) which appear often in the articles. To do this, remove any row that is not `NA` when we convert the character strings to numeric.
@@ -95,7 +118,7 @@ In addition, remove any "words" that are actually numbers (such as years) which 
 articles_wordcount <- articles_wordcount %>% filter(is.na(as.numeric(word)))
 ```
 
-Finally, convert the long data frame, which has one row for each article-word combination, to a document-term matrix (DTM). The DTM is in wide form, where each row is an article and each column is a word, with the entries being how many times the word appears in the article. It is a relatively "sparse" matrix, meaning that there are a lot of zeroes in it, around 94% of the entries (because the majority of words only appear in one or two articles).
+Finally, convert the long data frame, which has one row for each article-word combination, to a document-term matrix (DTM). The DTM is in wide form, where each row is an article and each column is a word, with the entries being how many times the word appears in the article. It is a relatively "sparse" matrix, meaning that there are a lot of zeroes in it, around 94% of the entries (because the majority of words only appear in one or two articles). After our data cleaning and thresholding we are down to about 3000 unique words from an initial 8000.
 
 ```{r}
 articles_dtm <- articles_wordcount %>%
@@ -143,7 +166,7 @@ top10 %>%
   theme(axis.text.x = element_text(angle = 45, hjust = 1))
 ```
 
-In this toy example, it looks like there is a topic about how aquaculture marine fisheries in the Gulf of Mexico, a topic featuring environmental impacts of offshore farms, a topic about regulation (committee) and research (NOAA/research/data) into aquaculture, and a topic about fish farming that features interactions between fish and double-crested cormorant.
+In this toy example, it looks like there is a topic about how management activities in Alabama affect different wild species, one about federal management and policy (committee, NOAA, research), one about some kind of fish farming operation in Florida (pen, farming, Sarasota), and one very broad "big-picture" topic (production, commercial, sustainable, development).
 
 # Associating the articles back to topics
 
@@ -189,4 +212,31 @@ ggplot(aes(x = document, y = gamma, fill = factor(topic))) +
   scale_fill_brewer(palette = "Dark2")
 ```
 
-You could use this result to look at the articles that are supposed to be part of the same topic.
+You could use this result to look at the articles that are supposed to be part of the same topic. In particular it looks like topic 2 is not very well defined as there are only a couple of articles that are confidently assigned to that topic.
+
+# Determining topic coherence
+
+In the example above I picked `k = 4` as the number of topics completely arbitrarily. You may have more informed reasons to pick a different number of topics. However we can use a measure of "fit" called topic coherence to help determine what the optimal number of topics might be. Coherence is a score for a particular topic which represents how well-defined the topic is. Therefore we would prefer a value of `k` where the mean coherence across all topics is as high as possible. Let's go ahead and fit LDA models with all values of `k` between 2 and 10 and see whether this helps us distinguish. We will use the top 10 words per topic to assess coherence (although you could choose other values).
+
+```{r}
+ks <- 2:10
+
+# Get nine reproducible random seeds
+set.seed(999)
+random_seeds <- sample(1:1000, length(ks))
+
+lda_list <- map2(ks, random_seeds, ~ LDA(articles_dtm, k = .x, control = list(seed = .y)))
+mean_coherence <- map_dbl(lda_list, ~ mean(topic_coherence(., articles_dtm, top_n_tokens = 10)))
+
+plot(ks, mean_coherence, type = 'b')
+```
+
+From this initial quick and dirty look, it seems that 2 and 4 are decently well-supported values of `k`. You could use this analysis to supplement your informed judgment about what the best values of `k` might be.
+
+# Additional resources
+
+I found these other resources while browsing around -- you might find them helpful.
+
+- [Vignette on text mining with the textmineR package](https://cran.r-project.org/web/packages/textmineR/vignettes/c_topic_modeling.html). This seems to be a nice package that would be a good alternative to the tidyverse ones and might actually have better features.
+- [Beginner's guide to LDA modeling](https://towardsdatascience.com/beginners-guide-to-lda-topic-modelling-with-r-e57a5a8e7a25). Uses the `textmineR` package.
+
