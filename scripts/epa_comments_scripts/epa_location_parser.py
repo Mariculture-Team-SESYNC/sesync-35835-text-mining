@@ -41,6 +41,7 @@ def dict_to_df(dict, output):
             fname = key
 
         df.to_csv(output + fname + ".csv", index=False)
+        print("Check file here:" + output + fname)
 
 # Function to read every page in a pdf and get its location
 def get_pdf_page(pdfReader, path):

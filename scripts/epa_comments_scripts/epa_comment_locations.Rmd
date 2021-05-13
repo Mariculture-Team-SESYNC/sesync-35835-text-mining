@@ -21,13 +21,14 @@ knitr::opts_chunk$set(echo = TRUE)
 
 # Setup
 
-Load packages.
-
+Load packages and set up python environment.
 ```{r load, message = FALSE, warning = FALSE}
 library(tidyverse)
+library(reticulate)
+use_virtualenv('/nfs/mariculture-data/env38', required = TRUE)
 ```
 
-# Run text scarper to extarct location data
+# Run text scarper to extract location data
 
 It is assumed that the last line in a file contains the location data we are interested in.
 Location text is not consistent, the last line not always contains location data. 
@@ -37,21 +38,22 @@ Sometimes the last line is not a location at all and it includes text such as "s
 
 Because of these cases, and since most locations are XX #########, the text parser assumes that a valid location starts with a letter and ends with a number. If it does not, then a message to check a file is printed next to the possible incorrect location. 
 
-**Note** that the `text_parser.py` script we are importing has to be in the same directory as this notebook. If you are interested in the Python code, take a look at that script on the GitHub repo.
-**Make sure the output path exists.**
+**Note** that the `epa_location_parser.py` script we are importing has to be in the same directory as this notebook. If you are interested in the Python code, take a look at that script on the GitHub repo.
+
+Specify the folder with the txt files within the [] for txt_folders.
+Specify the folder with the pdf files within the [] for pdf_folders
+**Make sure the output path exists. This is where files will be saved.** 
 ```{python}
 import epa_location_parser
-epa_location_parser.main(txtFolders = ['1. Mass 1', '1. Mass 1b'], 
-                          pdfFolders = ['2. Mass 2 with attachments - FOTE'], 
-                          output = 'nfs/mariculture-data/PPA_Data/EPA Public Comment/EPACommentsLocations/')
+epa_location_parser.main(txt_folders = ['1. Mass 1', '1. Mass 1b'], 
+                          pdf_folders = ['2. Mass 2 with attachments - FOTE'], 
+                          output = '/nfs/mariculture-data/PPA_Data/EPA Public Comment/EPACommentsLocations/')
 ```
-
-
 Now we can load the resulting CSV into R.
 Let's load the csv for the  Part A pdf file and the csv with the locations for folder 1. Mass 1b.
 ```{r, message = FALSE}
 parta_comments <- read_csv('/nfs/mariculture-data/PPA_Data/EPA Public Comment/EPACommentsLocations/Part A.pdf.csv')
 
-mass_1b <- read_csv('/nfs/mariculture-data/PPA_Data/EPA Public Comment/EPACommentsLocations/1. Mass 1b.csv ')
+mass_1b <- read_csv('/nfs/mariculture-data/PPA_Data/EPA Public Comment/EPACommentsLocations/1. Mass 1b.csv')
 ```
 

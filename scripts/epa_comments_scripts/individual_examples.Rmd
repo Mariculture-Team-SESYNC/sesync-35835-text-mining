@@ -1,0 +1,120 @@
+---
+title: "EExamples for extracting location data from EPA Comment emails"
+author: "Andres Garcia"
+date: "5/13/2021"
+output: html_document
+---
+
+# Summary
+
+**This is notebook with examples on how to extract location data from EPA comment emails.
+It covers how to extract locations from pdfs and txt files.**
+
+# Version History
+
+- **12 May 2021**: first version
+
+# Setup
+
+```{r}
+library(pdftools)
+library(dplyr)
+```
+
+# PDFs Example
+
+Specify the path to the folder contianing the pdf files and read in the files. 
+`pdfFiles` contains a list of pdfs to be processed.
+```{r}
+pathPdfs = "/nfs/mariculture-data/PPA_Data/EPA Public Comment/2. Mass 2 with attachments - FOTE"
+pdfFiles <- list.files(path = pathPdfs, pattern = "pdf",  full.names = TRUE)
+```
+
+Conver pdfs to text.
+Split into individual pages for each pdf.
+Pages Text contains the pages for each of the pdf files.
+```{r}
+pagesText <- lapply(pdfFiles, pdf_text)  
+```
+
+Split pages into lines.
+```{r}
+pagesLines <- lapply(text, function(i) {
+  strsplit(i, "\n")
+})
+```
+
+Get last line containing possible location information.
+```{r}
+locationLines <- lapply(pagesLines, function(i) {
+  tail(i[[1]], n=1)
+})
+
+# make into a dataframe for easier reading
+locationdf <- as.data.frame(locationLines) %>% gather()
+```
+
+Add flag if location is not valid. 
+Notice for pdf files the index is also the page number. 
+Check the page to verify a location if flag is present.
+```{r}
+locationdf$flag <- lapply(locationdf$value, function(i) {
+  case_when(
+    # check 1st two character are letters
+    grepl("[a-zA-Z]", substring(i, 1, 2)) == FALSE |
+    # check last 9 are digits
+    grepl("\\d", substr(i, nchar(i) - 9 + 1,
+                        nchar(i))) == FALSE ~ "Check"
+  )
+})
+
+# keep columns of interest, this can be stored as a csv file
+locationdf <- locationdf[,2:3]
+View(locationdf)
+```
+
+# Text Files Example
+
+Specify the path to the txt files folder. 
+```{r}
+pathMass1 = "/nfs/mariculture-data/PPA_Data/EPA Public Comment/1. Mass 1"
+mass1TxtFiles <- list.files(path = pathMass1, pattern = "txt",  full.names = TRUE)
+```
+
+Read txt files.
+```{r}
+# we will just work with the first 10 txt files in the folder
+# remove [1:10] to process all files
+textFiles <- lapply(mass1TxtFiles[1:10], function(i) {
+  read.delim(i)
+})
+```
+
+Get last lines containing possible location information.
+```{r}
+locationLines <- lapply(textFiles, function(i) {
+  tail(i[[1]], n=1)
+})
+
+# make into a dataframe for easier reading
+locationdf <- as.data.frame(locationLines) %>% gather()
+```
+
+Add flag if location is not valid.
+Not valid = 1st two character are not letter or last 9 characters are not numbers.
+```{r}
+locationdf$flag <- lapply(locationdf$value, function(i) {
+  case_when(
+    # check if 1st two character are letters
+    grepl("[a-zA-Z]", substring(i, 1, 2)) == FALSE |
+    # check if last 9 are digits
+    grepl("\\d", substr(i, nchar(i) - 9 + 1,
+                        nchar(i))) == FALSE ~ "Check"
+  )
+})
+
+# keep columns of interest, this can be stored as a csv file
+locationdf <- locationdf[,2:3]
+View(locationdf)
+```
+
