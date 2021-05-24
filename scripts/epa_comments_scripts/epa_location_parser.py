@@ -1,6 +1,7 @@
 import glob
 import pandas as pd
 import pip
+import re
 import PyPDF2
 
 # path to where the comment files are
@@ -28,7 +29,7 @@ def check_valid_location(line):
 
     # pass any of regular expression
     # and the string in search() method
-    if(re.search(city_state_regex, line) or re.search(state_dash_9zip_regex, line)
+    if(re.search(city_state_zip_regex, line) or re.search(state_dash_9zip_regex, line)
       or re.search(state_noDash_9zip_regex, line) or re.search(state_5zip_regex, line)):
         return True
     else:
@@ -48,12 +49,38 @@ def find_location(line_list):
             break
     return False
 
+# Function to find a name
+# It traverses a list until a possible name is found. It is assumed that the name is the line above a location
+# In: list of lines
+# Out: name
+def find_name(line_list):
+    # Note the location function reversed the list, so no need to reverse the list again. 
+    for line in line_list:
+        # A name is the line above a location.
+        # If the line is not empty and not a location then it is a posibble name
+        if(check_valid_location(line.rstrip()) == False and line.rstrip() != ''):
+            return line.rstrip()
+            break
+    return False
+
+# Function to extraact comment text
+# In string of pdf page or text file
+# Out: text comment
+# Assumes commments start with Dear and end with Thank you
+def find_text(data):
+    try:
+        text = re.search(r'Dear\s*(.*?)\s*Thank you', data).group()
+    except AttributeError:
+        text = re.search(r'Dear\s*(.*?)\s*Thank you', data)
+
+    return text
+
 # Function to write resulst
 # In: dictionary and output path
 # Out: a csv file for each key in the dictionary containing the location information
 def dict_to_df(dict, output):
     for key, value in dict.items():
-        df = pd.DataFrame(value, columns=['location', 'flag'])
+        df = pd.DataFrame(value, columns=['location', 'flag', 'name', 'comment'])
         try:
             # used for naming results from pdfs
             fname = key.split('/')
@@ -65,15 +92,19 @@ def dict_to_df(dict, output):
         df.to_csv(output + fname + ".csv", index=False)
         print("Check file here:" + output + fname)
 
-# Function to read every page in a pdf and get its location
+# Function to read every page in a pdf and get its location and name
 def get_pdf_page(pdfReader, path):
-    locations = []
-    # get location from every page
+    info = []
+    # get location and name from every page
     for i in range(0, pdfReader.numPages):
         # creating a page object 
         pageObj = pdfReader.getPage(i)
         # extracting text from page 
         txt = pageObj.extractText()
+
+        # get text commment 
+        txt_comment = find_text(txt)
+
         # split by new line 
         txt_list = txt.split("\n")
         location = find_location(txt_list)
@@ -84,9 +115,13 @@ def get_pdf_page(pdfReader, path):
         odds = ""
         if not (location):
             odds = "Check: " + path + " , page: " + str(i)
-        locations.append([location, odds])
-    
-    return locations
+
+        # get name
+        name = find_name(txt_list)
+
+        info.append([location, odds, name, txt_comment])
+
+    return info
 
 # Function to read the pdf file
 # Get location for every page
@@ -95,16 +130,16 @@ def get_pdf_page(pdfReader, path):
 def create_pdf_obj(path):
     with open(path, 'rb') as pdf:
         pdfReader = PyPDF2.PdfFileReader(pdf)
-        locations = get_pdf_page(pdfReader, path)
+        info = get_pdf_page(pdfReader, path)
     
-    return locations
+    return info
 
 # Functions starts the process to read a pdf file and get the location string for every page
 # In: file path
 # Out: a list with a location and path. Note: path is empty if locatoin is 'valid'.
 def pdf_start(f):
-    locations = create_pdf_obj(f)
-    return locations
+    info = create_pdf_obj(f)
+    return info
 
 # Main funciton to extract location data from pdf files
 # In: list of all the pdf paths, output path
@@ -115,8 +150,8 @@ def pdf_main(pdf_files, output):
     # get the locations of every page in every pdf file
     # assign locations to dictionary
     for f in pdf_files:
-        locations = pdf_start(f)
-        pdfDict[f] = locations
+        info = pdf_start(f)
+        pdfDict[f] = info
 
     # write each key value pair in the dictionary as a csv file
     dict_to_df(pdfDict, output)
@@ -124,20 +159,31 @@ def pdf_main(pdf_files, output):
 # Read text file
 # In: txt file path
 # Out: a list where each line in the txt file is an item in the list
-def read_file(path):
+def read_txt_file(path):
     with open(path, encoding='cp1252') as file:
         line_list = file.readlines()
         return line_list
+
+# Read text file as one
+# In: path
+# Out: sting of text file. New line characters are replaced by a single space.
+def read_as_one(path):
+    with open(path, encoding='cp1252') as file:
+        data = file.read().replace('\n', ' ')
+        return data
 
 # Function starts the process to read a txt file and get the location string
 # In: file path
 # Out: a list with a location and path. Note: path is empty if locatoin is 'valid'.
 def txt_start(f):
-    # read txt file
-    data = read_file(f)
+    # read txt file and get lines
+    line_list = read_txt_file(f)
+
+    # read text file as one
+    data = read_as_one(f)
     
     # get location
-    location = find_location(data)
+    location = find_location(line_list)
     
     # odd locations
     # If find_locations() returns false then a location does not meet the criteria specified in check_valid_location()
@@ -145,8 +191,14 @@ def txt_start(f):
     odds = ""
     if not (location):
         odds = "Check: " + f
+
+    # get name
+    name = find_name(line_list)
+    # get text comment
+    txt_comment = find_text(data)
+    
         
-    return [location, odds]
+    return [location, odds, name, txt_comment]
 
 # Main funciton to extract location data from txt files
 # In: list of folders with txt files, list of all the txt paths, output path
@@ -156,8 +208,8 @@ def txt_main(txt_folders, txt_files, output):
 
     # for every file in each folder get the location using txt_start()
     for i in range(0, len(txt_folders)):
-        locationsM = [txt_start(f) for f in txt_files[i]]
-        txtDict[txt_folders[i]] = locationsM
+        info = [txt_start(f) for f in txt_files[i]]
+        txtDict[txt_folders[i]] = info
     
     # write each key value pair in the dictionary as a csv file
     dict_to_df(txtDict, output)
@@ -190,7 +242,6 @@ def main(txt_folders, pdf_folders, output):
 if __name__ == "__main__":
     # Specify paths folder where files are located and the output folder to dave results
     main(['1. Mass 1', '1. Mass 1b'], ['2. Mass 2 with attachments - FOTE'], '/nfs/mariculture-data/PPA_Data/EPA Public Comment/EPACommentsLocations/')
-
 
 
 
