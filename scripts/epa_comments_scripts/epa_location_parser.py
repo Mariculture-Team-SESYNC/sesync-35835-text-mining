@@ -12,19 +12,41 @@ PATH = '/nfs/mariculture-data/PPA_Data/EPA Public Comment/'
 def combine_paths(folders):
     return [PATH + f for f in folders]
 
-# Function to get locations.
-# It is assumed that the last line in a file is the location.
+# Function check if a location string is valid if it matched the regex expression
+# In: text line
+# Out: True if location is valid, else false
+def check_valid_location(line):
+    # Add or remove expression here to check for other cases
+    # City, State Abbreviation 9 digit zip code
+    city_state_zip_regex = '([A-Z][a-z]+\s?)+,\s[A-Z]{2}\s\d{5}-?\d{4}?'
+    # State Abbreviation and 9 digit zip code with dash (#####-####)
+    state_dash_9zip_regex = '[A-Z]{2}\s\d{5}-?\d{4}?'
+    # State Abbreviation and 9 digit zip code no dash (#########)
+    state_noDash_9zip_regex = '[A-Z]{2}\s\d{9}?'
+    # State Abbreviation and 5 digit zip code
+    state_5zip_regex = '[A-Z]{2}\s\d{5}?'
+
+    # pass any of regular expression
+    # and the string in search() method
+    if(re.search(city_state_regex, line) or re.search(state_dash_9zip_regex, line)
+      or re.search(state_noDash_9zip_regex, line) or re.search(state_5zip_regex, line)):
+        return True
+    else:
+        return False
+
+# Function to valid locations. Uses check_valid_location.
 # It traverses backwards until a valid line with a possible location is found.
 # In: a list of lines 
-# Out: location string of a file
-def find_location(lst):
-    lst.reverse()
-    for el in lst:
-        if el != '\n' and el != ' ' and el != '':
-            return el.rstrip('\n')
+# Out: location string of a file, False if location string criteria is not met
+def find_location(line_list):
+    line_list.reverse()
+    for line in line_list:
+        # for every line in the list of line check if a line is a valid location
+        # break loop once a valid location is found
+        if(check_valid_location(line.rstrip())):
+            return line.rstrip()
             break
-        else:
-            pass
+    return False
 
 # Function to write resulst
 # In: dictionary and output path
@@ -54,17 +76,15 @@ def get_pdf_page(pdfReader, path):
         txt = pageObj.extractText()
         # split by new line 
         txt_list = txt.split("\n")
-        loc = find_location(txt_list)
+        location = find_location(txt_list)
         
         # odd locations
-        # Most locatinos have the following format: LL #########, where LL are letters.
-        # Some locations do not follow this format. Also not always the location is listed in the last line of the file.
-        # beacuse of this, we assume a valid location starts with a letter and ends in a number. If it does not then a message
-        # is attached to check this file manually.
+        # If find_locations() returns false then a location does not meet the criteria specified in check_valid_location()
+        # a message is attached to check this file manually
         odds = ""
-        if not (loc[0].isalpha() and loc[len(loc)-1].isnumeric()):
+        if not (location):
             odds = "Check: " + path + " , page: " + str(i)
-        locations.append([loc, odds])
+        locations.append([location, odds])
     
     return locations
 
@@ -120,12 +140,10 @@ def txt_start(f):
     location = find_location(data)
     
     # odd locations
-    # Most locatinos have the following format: LL #########, where LL are letters.
-    # Some locations do not follow this format. Also not always the location is listed in the last line of the file.
-    # beacuse of this, we assume a valid location starts with a letter and ends in a number. If it does not then a message
-    # is attached to check this file manually.
+    # If find_locations() returns false then a location does not meet the criteria specified in check_valid_location()
+    # a message is attached to check this file manually
     odds = ""
-    if not (location[0].isalpha() and location[len(location)-1].isnumeric()):
+    if not (location):
         odds = "Check: " + f
         
     return [location, odds]
