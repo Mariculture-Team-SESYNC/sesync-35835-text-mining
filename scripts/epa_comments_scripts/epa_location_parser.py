@@ -26,11 +26,15 @@ def check_valid_location(line):
     state_noDash_9zip_regex = '[A-Z]{2}\s\d{9}?'
     # State Abbreviation and 5 digit zip code
     state_5zip_regex = '[A-Z]{2}\s\d{5}?'
+    # Full state and 5 digit zip code (State #####)
+    fullState_5zip_regex = '([A-Z][a-z]+\s?)+?\d{5}'
+    # 5 digit zip code only (#####)
+    only_5zip_regex = '\d{5}'
 
-    # pass any of regular expression
-    # and the string in search() method
-    if(re.search(city_state_zip_regex, line) or re.search(state_dash_9zip_regex, line)
-      or re.search(state_noDash_9zip_regex, line) or re.search(state_5zip_regex, line)):
+    # a possible loacation string matched any regex expresion return true
+    if(any(re.search(regex, line) for regex in [city_state_zip_regex, state_dash_9zip_regex, 
+                                     state_noDash_9zip_regex, state_5zip_regex,
+                                    fullState_5zip_regex, only_5zip_regex])):
         return True
     else:
         return False
@@ -234,9 +238,9 @@ def main(txt_folders, pdf_folders, output):
     txt_main(txt_folders, txt_files, output)
 
     # Get all the pdf files from the specified folders
-    ALL_PATHS = combine_paths(pdf_folders)
-    pdf_files = [[f for f in glob.glob(p + '/*.pdf')] for p in ALL_PATHS]
-    pdf_main(pdf_files[0], output)
+    # ALL_PATHS = combine_paths(pdf_folders)
+    # pdf_files = [[f for f in glob.glob(p + '/*.pdf')] for p in ALL_PATHS]
+    # pdf_main(pdf_files[0], output)
 
 
 if __name__ == "__main__":
