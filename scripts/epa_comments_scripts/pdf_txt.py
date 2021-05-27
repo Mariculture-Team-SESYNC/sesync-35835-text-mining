@@ -16,7 +16,7 @@ def getPDFLetter(path):
     return letter
 
 
-# Converts and writes pdfs into txts
+# Converts and writes pdfs pages into txts
 # Saves pages for pdf A-S in respective folders
 def pdfPageConvertTxt(pdf_files, output):
     for element in pdf_files:
@@ -34,6 +34,8 @@ def pdfPageConvertTxt(pdf_files, output):
         
         print("Done", letter)
 
+# Converts and writes whole pdfs into txts
+# Saves pdf as txt
 def pdfWholeConvertTxt(pdf_files, output):
     for element in pdf_files:
         fname = element.split('/').pop().split('.')[0]
@@ -58,6 +60,7 @@ def main(pdf_path, output, flag):
     ALL_PATHS = combinePaths(pdf_path)
     pdf_files = [f for f in glob.glob(ALL_PATHS + '/*.pdf')]
 
+    # convert individual pages or not
     if(flag.lower() == 'y'):
         pdfPageConvertTxt(pdf_files, output)
     else:

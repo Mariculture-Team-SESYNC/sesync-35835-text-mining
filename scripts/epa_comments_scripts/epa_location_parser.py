@@ -48,6 +48,7 @@ def find_location(line_list):
     for line in line_list:
         # for every line in the list of line check if a line is a valid location
         # break loop once a valid location is found
+        # Strip trialing spaces
         if(check_valid_location(line.rstrip())):
             return line.rstrip()
             break
@@ -58,10 +59,12 @@ def find_location(line_list):
 # In: list of lines
 # Out: name
 def find_name(line_list):
-    # Note the location function reversed the list, so no need to reverse the list again. 
+    # Note the location function reversed the list, there is no need to reverse the list again. List is reversed
+    # Name should be in the first(last) 8 rows.
     for line in line_list:
         # A name is the line above a location.
         # If the line is not empty and not a location then it is a posibble name
+        # Strip trialing spaces
         if(check_valid_location(line.rstrip()) == False and line.rstrip() != ''):
             return line.rstrip()
             break
@@ -69,22 +72,21 @@ def find_name(line_list):
 
 # Function to extraact comment text
 # In string of pdf page or text file
-# Out: text comment
-# Assumes commments start with Dear and end with Thank you
+# Out: text comment between Dead EPA, and Thank
+# Assumes commments start with Dear and end at Thank ...
 def find_text(data):
     try:
-        text = re.search(r'Dear\s*(.*?)\s*Thank you', data).group()
+        text = re.search(r'.*?\Dear(.*)Thank', data).group(1)
+        return text.strip() # strip leading and trialing spaces
     except AttributeError:
-        text = re.search(r'Dear\s*(.*?)\s*Thank you', data)
-
-    return text
+        return False
 
 # Function to write resulst
 # In: dictionary and output path
 # Out: a csv file for each key in the dictionary containing the location information
 def dict_to_df(dict, output):
     for key, value in dict.items():
-        df = pd.DataFrame(value, columns=['location', 'flag', 'name', 'comment'])
+        df = pd.DataFrame(value, columns=['page-file', 'location', 'name', 'comment', 'flag'])
         try:
             # used for naming results from pdfs
             fname = key.split('/')
@@ -106,24 +108,23 @@ def get_pdf_page(pdfReader, path):
         # extracting text from page 
         txt = pageObj.extractText()
 
-        # get text commment 
-        txt_comment = find_text(txt)
+        # get text commment, replce newlines with spaces for better matching
+        txt_comment = find_text(txt.replace('\n', ' '))
 
         # split by new line 
         txt_list = txt.split("\n")
         location = find_location(txt_list)
         
-        # odd locations
-        # If find_locations() returns false then a location does not meet the criteria specified in check_valid_location()
-        # a message is attached to check this file manually
-        odds = ""
-        if not (location):
-            odds = "Check: " + path + " , page: " + str(i)
-
-        # get name
+        # get name which should be in the last 10 rows
         name = find_name(txt_list)
 
-        info.append([location, odds, name, txt_comment])
+        # odd locations, names, text
+        # If find_locations(), find_name(), or find_text return false then add a flag
+        odds = ""
+        if not all([location, name, txt_comment]):
+            odds = "Check: " + path + " , page: " + str(i)
+
+        info.append([i, location, name, txt_comment, odds])
 
     return info
 
@@ -182,27 +183,23 @@ def read_as_one(path):
 def txt_start(f):
     # read txt file and get lines
     line_list = read_txt_file(f)
-
     # read text file as one
     data = read_as_one(f)
-    
+
     # get location
     location = find_location(line_list)
-    
-    # odd locations
-    # If find_locations() returns false then a location does not meet the criteria specified in check_valid_location()
-    # a message is attached to check this file manually
-    odds = ""
-    if not (location):
-        odds = "Check: " + f
-
     # get name
     name = find_name(line_list)
     # get text comment
     txt_comment = find_text(data)
+
+    # odd locations, names, text
+    # If find_locations(), find_name(), or find_text return false then add a flag
+    odds = ""
+    if not all([location, name, txt_comment]):
+        odds = "Check: " + f
     
-        
-    return [location, odds, name, txt_comment]
+    return [f, location, name, txt_comment, odds]
 
 # Main funciton to extract location data from txt files
 # In: list of folders with txt files, list of all the txt paths, output path
@@ -235,12 +232,12 @@ def main(txt_folders, pdf_folders, output):
                 tmp_list.append(f)
         txt_files.append(tmp_list)
 
-    txt_main(txt_folders, txt_files, output)
+    #txt_main(txt_folders, txt_files, output)
 
     # Get all the pdf files from the specified folders
-    # ALL_PATHS = combine_paths(pdf_folders)
-    # pdf_files = [[f for f in glob.glob(p + '/*.pdf')] for p in ALL_PATHS]
-    # pdf_main(pdf_files[0], output)
+    ALL_PATHS = combine_paths(pdf_folders)
+    pdf_files = [[f for f in glob.glob(p + '/*.pdf')] for p in ALL_PATHS]
+    pdf_main(pdf_files[0], output)
 
 
 if __name__ == "__main__":

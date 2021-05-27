@@ -28,9 +28,9 @@ def docxPageConvertTxt(docx_files, output):
         print("Done", fname)
 
 
-def main(pdf_path, output):
+def main(docx_path, output):
     # Get all the docx files from the specified folder
-    ALL_PATHS = combinePaths(pdf_path)
+    ALL_PATHS = combinePaths(docx_path)
     docx_files = [f for f in glob.glob(ALL_PATHS + '/*.docx')]
     docxPageConvertTxt(docx_files, output)
 
