@@ -232,7 +232,7 @@ def main(txt_folders, pdf_folders, output):
                 tmp_list.append(f)
         txt_files.append(tmp_list)
 
-    #txt_main(txt_folders, txt_files, output)
+    txt_main(txt_folders, txt_files, output)
 
     # Get all the pdf files from the specified folders
     ALL_PATHS = combine_paths(pdf_folders)
