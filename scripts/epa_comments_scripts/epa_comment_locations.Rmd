@@ -1,0 +1,101 @@
+---
+title: "Extracting location data from EPA Comment emails"
+author: "Andres Garcia"
+date: "5/12/2021"
+output: html_document
+---
+
+**This is a work in progress and will be edited! The data scraping is a "quick and dirty" solution that has flaws and could be improved.**
+
+# Version History
+
+- **12 May 2021**: first version
+- **27 May 2021**: second version, implements several checks reducing the number of rows flagged. 
+
+# Summary
+
+This is a notebook which goes through the process of extracting location, name, and
+comment data from EPA comment email pdf and txt files. 
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+# Setup
+
+Load packages and set up python environment.
+```{r load, message = FALSE, warning = FALSE}
+library(tidyverse)
+library(reticulate)
+use_virtualenv('/nfs/mariculture-data/env38', required = TRUE)
+```
+
+# Run text scarper to extract location, name, and comment data
+
+## Location
+It is assumed that the last line in a file contains the location data we are interested in.
+Location text is not consistent.
+For example, a location can be "New York, 12084", "NY, 12084", or just 12084.
+Locations can also be locations in Europe and or Canada. 
+Sometimes the last line is not a location at all and it includes text such as "sent form iphone".
+
+A location is valid if it meet one of the following criteria:
+- Full address (123 Streey RD, City ST #####-####)
+- 9 digit zip code with dash (#####-####)
+- 9 digit zip code no dash (#########)
+- full state name and 5 digit zip code (State #####)
+- 5 digit zip code only (#####)
+
+If a location is not valid then a flag is printed with the file path or page to check.
+
+## Name
+Names are assumed to be before a location. 
+If a line is not a location and it it not empty, then it is a possible name.
+False is returned if the name does not meet the above criteria.
+
+## Comment data
+Comment data is assumed to be between Dear and Thank.
+If the regex expression is not matched then false is returned. 
+
+**Note** that if false is returned for name, location, or comment a flag is printed
+with the location of the file to be checked. 
+
+**Note** that the `epa_location_parser.py` script we are importing has to be in the same directory as this notebook. If you are interested in the Python code, take a look at that script on the GitHub repo.
+
+Specify the folder with the txt files within the [] for txt_folders.
+Specify the folder with the pdf files within the [] for pdf_folders
+**Make sure the output path exists. This is where files will be saved.** 
+```{python}
+import epa_location_parser
+epa_location_parser.main(txt_folders = ['1. Mass 1', '1. Mass 1b'], 
+                          pdf_folders = ['2. Mass 2 with attachments - FOTE'], 
+                          output = '/nfs/mariculture-data/PPA_Data/EPA Public Comment/EPACommentsLocations/')
+```
+
+Now we can load the resulting CSV into R.
+Let's load the csv for the  Part A pdf file and the csv with the locations for folder 1. Mass 1b.
+```{r, message = FALSE}
+parta_comments <- read_csv('/nfs/mariculture-data/PPA_Data/EPA Public Comment/EPACommentsLocations/Part A.pdf.csv')
+
+mass_1b <- read_csv('/nfs/mariculture-data/PPA_Data/EPA Public Comment/EPACommentsLocations/1. Mass 1b.csv')
+```
+
+Additionally, I have written 2 scripts to convert docx and pfd to txt in batches.
+These were used to convert the files in “Unique comments with attachments” to txt.
+
+For word pdfs:
+Set flag to 'y' to split and covernt individual pages to txt.
+```{python}
+import doc_txt
+pdf_txt.main(pdf_path = '7. Unique comments with Attachments/Attachments', 
+                          output = 'EPACommentsLocations/uniqueAttachmentsTxt', 
+                          flag = 'n')
+```
+
+For docx:
+```{python}
+import doc_txt
+doc_txt.main(docx_path = '7. Unique comments with Attachments/Attachments', 
+                          output = 'EPACommentsLocations/uniqueAttachmentsTxt')
+```
+
