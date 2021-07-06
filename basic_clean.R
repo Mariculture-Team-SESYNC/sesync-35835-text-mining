@@ -1,8 +1,11 @@
 library(readr)
 library(janitor)
 
-#import raw
+## RY: import raw
 ProQuestDocuments_parsed <- read_csv("~/Desktop/ProQuestDocuments_parsed.csv")
+## AGG: import raw from SESYNC server
+ProQuestDocuments_parsed<-read.csv("/nfs/mariculture-data/Text_Parser/data/ProQuestDocuments_parsed.csv")
+
 
 #rename
 articles<-ProQuestDocuments_parsed%>%
